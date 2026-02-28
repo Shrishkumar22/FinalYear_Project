@@ -1,4 +1,5 @@
 import os
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,7 +38,10 @@ opt_old_lr = 0.01
 opt_new_lr = 0.01
 
 dataset_type = "new"
+LOG_DIR = "logs"
+LOG_FILE = os.path.join(LOG_DIR, "client_metrics.jsonl")
 
+os.makedirs(LOG_DIR, exist_ok=True)
 def load_models(model_path):
     # Instantiate the model
     teacher_model = AE_classifier(input_dim=17).to(device)
@@ -233,6 +237,7 @@ def online_adaptation(model, teacher_model,
                       epoch_1=1,
                       new_sample_weight=2.0,
                       lwf_lambda=0.5,
+                      round_number=1,
                       device=None):
     if device is None:
         device = next(model.parameters()).device
@@ -383,7 +388,16 @@ def online_adaptation(model, teacher_model,
     y_test_true = y_test[mask].to(device)
 
     perf = score_detail(y_test_true.cpu().numpy(), y_test_pseudo.cpu().numpy())
-    print(perf)
+    log_entry = {
+    "client_id": id,
+    "round": round_number,
+    "metrics": perf
+}
+
+    with open(LOG_FILE, "a") as f:
+        f.write(json.dumps(log_entry) + "\n")
+    
+    
 
     return model
 
@@ -398,6 +412,7 @@ def online_adaptation(model, teacher_model,
 # -----------------------------------------------------------
 def main(teacher_model,round,id):
     """Main function to be called from other modules"""
+
 
     print("Loading teacher model from global server...")
     teacher_model.to(device)
@@ -426,11 +441,12 @@ def main(teacher_model,round,id):
         y_train,
         x_test,
         y_test,
+        round_number=round,
         device=device,
     )
     print("round "+str(round)+" completed")
 
-    torch.save(final_model.state_dict(), "updated_student.pth")
+    torch.save(final_model.state_dict(), f"updated_student_{id}.pth")
     print("\nSaved updated model successfully.")
     return final_model
 
