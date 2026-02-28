@@ -1,0 +1,73 @@
+services:
+  fl_server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: fl_server
+    ports:
+      - "8000:8000"
+    networks:
+      - fl_net
+
+  client1:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: client1
+    environment:
+      - CLIENT_TRUST=0.6
+      - CLIENT_ID=client1
+      - SERVER_URL=http://fl_server:8000
+      - CLIENT_URL=http://client1:9000
+    volumes:
+      - C:/Users/slohc/OneDrive/Desktop/Shrish_FinalYearProj/client/client1_test.csv:/app/client1_test.csv
+      - C:/Users/slohc/OneDrive/Desktop/Shrish_FinalYearProj/client/client2_test.csv:/app/client2_test.csv
+    ports:
+      - "9001:9000"
+    networks:
+      - fl_net
+    depends_on:
+      - fl_server
+
+  client2:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: client2
+    environment:
+      - CLIENT_TRUST=0.4
+      - CLIENT_ID=client2
+      - SERVER_URL=http://fl_server:8000
+      - CLIENT_URL=http://client2:9000
+    volumes:
+      - C:/Users/slohc/OneDrive/Desktop/Shrish_FinalYearProj/client/client1_test.csv:/app/client1_test.csv
+      - C:/Users/slohc/OneDrive/Desktop/Shrish_FinalYearProj/client/client2_test.csv:/app/client2_test.csv
+    ports:
+      - "9002:9000"
+    networks:
+      - fl_net
+    depends_on:
+      - fl_server
+
+  client3:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: client3
+    environment:
+      - CLIENT_ID=client3
+      - SERVER_URL=http://fl_server:8000
+      - CLIENT_URL=http://client3:9000
+    volumes:
+      - C:/Users/slohc/OneDrive/Desktop/Shrish_FinalYearProj/client/client1_test.csv:/app/client1_test.csv
+      - C:/Users/slohc/OneDrive/Desktop/Shrish_FinalYearProj/client/client2_test.csv:/app/client2_test.csv
+    ports:
+      - "9003:9000"
+    networks:
+      - fl_net
+    depends_on:
+      - fl_server
+
+networks:
+  fl_net:
+    driver: bridge

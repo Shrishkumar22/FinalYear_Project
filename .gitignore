@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+venv/
+.env/
+
+# Dataset files
+*.csv
+
+# Model weights
+*.pth
+*.pt
+
+# Docker
+*.log
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db

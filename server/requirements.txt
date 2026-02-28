@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic
+requests
+pandas
+scipy
+numpy
+scikit-learn
+matplotlib
