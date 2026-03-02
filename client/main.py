@@ -68,7 +68,7 @@ def ping():
 
 @app.post("/train_local")
 def train_local(req: TrainCommand):
-    model_path = "updated_student.pth"
+    model_path = f"updated_student_{CLIENT_ID}.pth"
     print(f"[{CLIENT_ID}] Received global model for round {req.round}")
 
     # 1️⃣ Build model and load global state
