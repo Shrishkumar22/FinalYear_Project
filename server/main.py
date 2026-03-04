@@ -1,4 +1,3 @@
-import time
 import base64
 import io
 import asyncio
@@ -11,18 +10,18 @@ from typing import List
 
 from utils import AE_classifier
 
-
-# -----------------------------------------------------
-# CONFIG
-# -----------------------------------------------------
-
 EXPECTED_CLIENTS = 3
 TRAIN_TIMEOUT = 600
 ROUND_INTERVAL = 20
 
+device = torch.device("cpu")
+print("Using CPU server")
+
+app = FastAPI()
+
 
 # -----------------------------------------------------
-# Utility Functions
+# Encoding
 # -----------------------------------------------------
 
 def encode_state_dict(state_dict):
@@ -40,22 +39,20 @@ def decode_state_dict(b64_string):
 
 
 # -----------------------------------------------------
-# Server Globals
+# Load Initial Model
 # -----------------------------------------------------
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Using device:", device)
-
-app = FastAPI()
-
-def load_model(model_path):
+def load_model(path):
     model = AE_classifier(input_dim=17).to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.load_state_dict(
+        torch.load(path, map_location=device)
+    )
     model.eval()
     return model
 
+
 model = load_model("teacher_optimized.pth")
-GLOBAL_MODEL = model.state_dict()
+GLOBAL_MODEL = {k: v.clone().detach() for k, v in model.state_dict().items()}
 
 CURRENT_ROUND = 1
 REGISTERED_CLIENTS = []
@@ -63,7 +60,7 @@ CLIENT_LOCK = asyncio.Lock()
 
 
 # -----------------------------------------------------
-# API Schemas
+# Register Schema
 # -----------------------------------------------------
 
 class RegisterRequest(BaseModel):
@@ -72,27 +69,13 @@ class RegisterRequest(BaseModel):
     trust: float
 
 
-class UpdateRequest(BaseModel):
-    client_id: str
-    round: int
-    model_bytes: str
-
-
 # -----------------------------------------------------
-# Endpoints
+# Register Endpoint
 # -----------------------------------------------------
-
-@app.get("/status")
-async def status():
-    return {
-        "status": "server_alive",
-        "round": CURRENT_ROUND,
-        "registered_clients": len(REGISTERED_CLIENTS),
-    }
-
 
 @app.post("/register_client")
 async def register(req: RegisterRequest):
+
     async with CLIENT_LOCK:
         for c in REGISTERED_CLIENTS:
             if c["id"] == req.client_id:
@@ -104,85 +87,77 @@ async def register(req: RegisterRequest):
             "trust": float(req.trust)
         })
 
-    print(f"[SERVER] Registered client: {req.client_id} with trust {req.trust}")
+    print(f"[SERVER] Registered {req.client_id}")
     return {"status": "registered"}
 
 
-@app.post("/submit_update")
-async def submit_update(req: UpdateRequest):
-    print(f"[SERVER] Update received from {req.client_id}")
-    return {"status": "ok"}
-
-
 # -----------------------------------------------------
-# Trust Weighted Aggregation
+# Aggregation
 # -----------------------------------------------------
 
-def aggregate_state_dicts(state_dicts: List[dict], trusts: List[float]):
+def aggregate(updates, trusts):
+
     global GLOBAL_MODEL
 
-    agg_dict = {}
-    trust_tensor = torch.tensor(trusts, dtype=torch.float32)
+    trust_tensor = torch.tensor(trusts)
+    trust_tensor = trust_tensor / trust_tensor.sum()
 
-    # Normalize trust
-    if trust_tensor.sum() == 0:
-        trust_tensor = torch.ones_like(trust_tensor) / len(trust_tensor)
-    else:
-        trust_tensor = trust_tensor / trust_tensor.sum()
+    agg = {}
 
     for key in GLOBAL_MODEL.keys():
-        tensors = [sd[key].float() for sd in state_dicts]
-        stacked = torch.stack(tensors, dim=0)
-
-        shape = [len(trusts)] + [1] * (stacked.dim() - 1)
+        stacked = torch.stack([u[key].float() for u in updates])
+        shape = [len(trusts)] + [1]*(stacked.dim()-1)
         weighted = stacked * trust_tensor.view(*shape)
+        agg[key] = weighted.sum(0)
 
-        agg_dict[key] = weighted.sum(dim=0)
-
-    GLOBAL_MODEL = agg_dict
+    GLOBAL_MODEL = agg
 
 
 # -----------------------------------------------------
-# Async Client Communication
+# Contact Client
 # -----------------------------------------------------
 
 async def contact_client(client, round_number, global_model_b64):
-    url = client["url"]
-    cid = client["id"]
-    trust = client["trust"]
 
     try:
-        async with httpx.AsyncClient(timeout=TRAIN_TIMEOUT) as client_http:
-            resp = await client_http.post(
-                f"{url}/train_local",
+        async with httpx.AsyncClient(timeout=TRAIN_TIMEOUT) as http_client:
+            resp = await http_client.post(
+                f"{client['url']}/train_local",
                 json={
                     "round": round_number,
                     "global_model_bytes": global_model_b64,
                 }
             )
 
-        if resp.status_code == 200:
-            update_b64 = resp.json()["model_bytes"]
-            print(f"[SERVER] Update received <- {cid}")
-            return decode_state_dict(update_b64), trust
-        else:
-            print(f"[SERVER] Bad response from {cid}")
+        if resp.status_code != 200:
+            print(f"[SERVER] {client['id']} returned error")
             return None
 
+        data = resp.json()
+
+        if data.get("status") == "error":
+            print(f"[SERVER] Client error:",
+                  data.get("message"))
+            return None
+
+        update = decode_state_dict(data["model_bytes"])
+        print(f"[SERVER] Update received from {client['id']}")
+        return update, client["trust"]
+
     except Exception as e:
-        print(f"[SERVER] ERROR contacting {cid}: {e}")
+        print(f"[SERVER] ERROR contacting {client['id']}:", e)
         return None
 
 
 # -----------------------------------------------------
-# Async Federated Learning Loop
+# Federated Loop
 # -----------------------------------------------------
 
 async def fl_loop():
-    global CURRENT_ROUND, GLOBAL_MODEL
 
-    await asyncio.sleep(3)
-    print("[SERVER] ASYNC FL LOOP STARTED")
+    global CURRENT_ROUND
+
+    await asyncio.sleep(5)
 
     while True:
 
@@ -190,47 +165,43 @@ async def fl_loop():
             clients_snapshot = REGISTERED_CLIENTS.copy()
 
         if len(clients_snapshot) < EXPECTED_CLIENTS:
-            print(f"[SERVER] Waiting for clients... ({len(clients_snapshot)}/{EXPECTED_CLIENTS})")
+            print("[SERVER] Waiting for clients...")
             await asyncio.sleep(5)
             continue
 
-        print(f"\n===== ROUND {CURRENT_ROUND} START =====")
+        print(f"\n===== ROUND {CURRENT_ROUND} =====")
 
-        global_model_b64 = encode_state_dict(GLOBAL_MODEL)
+        global_b64 = encode_state_dict(GLOBAL_MODEL)
 
-        # 🔥 Send to all clients concurrently
         tasks = [
-            contact_client(client, CURRENT_ROUND, global_model_b64)
-            for client in clients_snapshot
+            contact_client(c, CURRENT_ROUND, global_b64)
+            for c in clients_snapshot
         ]
 
         results = await asyncio.gather(*tasks)
 
         updates = []
-        update_trusts = []
+        trusts = []
 
-        for result in results:
-            if result is not None:
-                state_dict, trust = result
-                updates.append(state_dict)
-                update_trusts.append(trust)
+        for r in results:
+            if r is not None:
+                updates.append(r[0])
+                trusts.append(r[1])
 
         if updates:
-            print("[SERVER] Aggregating updates (trust-weighted)...")
-            aggregate_state_dicts(updates, update_trusts)
+            aggregate(updates, trusts)
+            print("[SERVER] Aggregation complete")
         else:
-            print("[SERVER] No updates this round")
-
-        print(f"===== ROUND {CURRENT_ROUND} END =====\n")
+            print("[SERVER] No updates received")
 
         CURRENT_ROUND += 1
         await asyncio.sleep(ROUND_INTERVAL)
 
 
 # -----------------------------------------------------
-# Startup Event
+# Startup
 # -----------------------------------------------------
 
 @app.on_event("startup")
-async def start_fl():
+async def startup_event():
     asyncio.create_task(fl_loop())

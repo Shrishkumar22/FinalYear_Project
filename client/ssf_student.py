@@ -47,7 +47,7 @@ def load_models(model_path):
     teacher_model = AE_classifier(input_dim=17).to(device)
 
     # Load weights
-    teacher_model.load_state_dict(torch.load(model_path, map_location=device))
+    teacher_model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
 
     teacher_model.eval()
     return teacher_model
@@ -238,6 +238,7 @@ def online_adaptation(model, teacher_model,
                       new_sample_weight=2.0,
                       lwf_lambda=0.5,
                       round_number=1,
+                      client_id=None,
                       device=None):
     if device is None:
         device = next(model.parameters()).device
@@ -376,31 +377,69 @@ def online_adaptation(model, teacher_model,
         pred = evaluate_classifier(model, test_loader, device, get_predict=True)
         y_train_detection = torch.cat((y_train_detection, torch.tensor(pred, device=device)))
 
-    # ---------------------------
-    # Final metrics
-    # ---------------------------
-    print("\n================= FINAL METRICS =================")
-    all_labeled_indices = np.hstack(labeled_indices)
-    mask = np.ones(len(x_test), dtype=bool)
-    mask[all_labeled_indices] = False
+        # ---------------------------
+        # Final metrics
+        # ---------------------------
+        print("\n================= FINAL METRICS =================")
 
-    y_test_pseudo = y_train_detection[-len(x_test):][mask].to(device)
-    y_test_true = y_test[mask].to(device)
+        try:
+            pseudo_size = len(y_train_detection)
 
-    perf = score_detail(y_test_true.cpu().numpy(), y_test_pseudo.cpu().numpy())
-    log_entry = {
-    "client_id": id,
-    "round": round_number,
-    "metrics": perf
-}
+            if pseudo_size == 0:
+                print("⚠ No pseudo labels available for evaluation.")
+                return model
 
-    with open(LOG_FILE, "a") as f:
-        f.write(json.dumps(log_entry) + "\n")
-    
-    
+            # Take last pseudo_size samples from test data
+            y_test_true = y_test[-pseudo_size:]
+            y_test_pseudo = y_train_detection
 
-    return model
+            print("Evaluation size:", pseudo_size)
 
+            perf = score_detail(
+                y_test_true.cpu().numpy(),
+                y_test_pseudo.cpu().numpy()
+            )
+
+            print(f"Round: {round_number}")
+            print("Metrics:")
+
+            if isinstance(perf, dict):
+
+                clean_perf = {}
+                for k, v in perf.items():
+                    value = float(v) if isinstance(v, (np.integer, np.floating)) else v
+                    clean_perf[k] = value
+                    print(f"{k}: {value:.4f}" if isinstance(value, float) else f"{k}: {value}")
+
+            elif isinstance(perf, tuple):
+
+                metric_names = ["accuracy", "precision", "recall", "f1_score"]
+
+                clean_perf = {}
+                for name, value in zip(metric_names, perf):
+                    value = float(value)
+                    clean_perf[name] = value
+                    print(f"{name}: {value:.4f}")
+
+            else:
+                print("Unknown metric format:", type(perf))
+                clean_perf = {"raw_output": str(perf)}
+
+            log_entry = {
+                "client_id": client_id,
+                "round": int(round_number),
+                "metrics": clean_perf
+            }
+
+            with open(LOG_FILE, "a") as f:
+                f.write(json.dumps(log_entry) + "\n")
+
+            print("Metrics logged successfully.")
+
+        except Exception as e:
+            print("Final metrics crashed:", e)
+
+        return model
 
 # -----------------------------------------------------------
 #                      MAIN ENTRY
@@ -442,6 +481,7 @@ def main(teacher_model,round,id):
         x_test,
         y_test,
         round_number=round,
+        client_id=id,
         device=device,
     )
     print("round "+str(round)+" completed")
