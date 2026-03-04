@@ -1,3 +1,6 @@
+# 
+
+
 import os
 import random
 from collections import OrderedDict
@@ -271,14 +274,13 @@ def score_detail(y_test, y_test_pred, if_print=True):
     rec = recall_score(y_test, y_test_pred)
     f1 = f1_score(y_test, y_test_pred)
 
-    # if if_print:
-    #     print("Confusion matrix")
-    #     print(cm)
-    #     print("Accuracy ", acc)
-    #     print("Precision ", prec)
-    #     print("Recall ", rec)
-    #     print("F1 score ", f1)
-
+    if if_print:
+        print("Confusion matrix")
+        print(cm)
+        print("Accuracy ", acc)
+        print("Precision ", prec)
+        print("Recall ", rec)
+        print("F1 score ", f1)
 
     return acc, prec, rec, f1
 
@@ -317,18 +319,18 @@ def evaluate_classifier(
 
     # main threshold
     preds = (all_probs > threshold).astype(int)
-    # print(f"\n=== Evaluation at threshold = {threshold:.2f} ===")
+    print(f"\n=== Evaluation at threshold = {threshold:.2f} ===")
     res = score_detail(all_labels, preds, if_print=True)
 
     if sweep_thresholds:
         from sklearn.metrics import precision_score, recall_score, f1_score
-        # print("\n=== Threshold sweep (for analysis) ===")
+        print("\n=== Threshold sweep (for analysis) ===")
         for t in np.linspace(0.1, 0.9, 9):
             p = (all_probs > t).astype(int)
             prec = precision_score(all_labels, p, zero_division=0)
             rec = recall_score(all_labels, p, zero_division=0)
             f1 = f1_score(all_labels, p, zero_division=0)
-            # print(f"t={t:.2f} | P={prec:.3f} R={rec:.3f} F1={f1:.3f}")
+            print(f"t={t:.2f} | P={prec:.3f} R={rec:.3f} F1={f1:.3f}")
 
     if get_predict:
         return preds
@@ -352,7 +354,7 @@ def setup_seed(seed):
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    # print(f"Random seed set to: {seed}")
+    print(f"Random seed set to: {seed}")
 
 ############################################################
 # Masks optimization (M_c, M_t) and drift utilities
@@ -548,8 +550,8 @@ def select_and_update_representative_samples(
     representative_old = x_train_this_epoch[M_c_bin.bool()]
     representative_new = x_test_this_epoch[M_t_bin.bool()]
 
-    # print(f"Selected representative old samples: {representative_old.shape}")
-    # print(f"Selected representative new samples: {representative_new.shape}")
+    print(f"Selected representative old samples: {representative_old.shape}")
+    print(f"Selected representative new samples: {representative_new.shape}")
 
     old_indices = torch.arange(len(x_train_this_epoch), device=device)
     representative_old_indices = old_indices[M_c_bin.bool()]
@@ -561,11 +563,11 @@ def select_and_update_representative_samples(
     num_to_remove = num_labeled_sample
 
     if len(non_representative_old_indices) < num_to_remove:
-        # print(
-        #     f"Not enough non-representative old samples to remove "
-        #     f"({len(non_representative_old_indices)}). "
-        #     f"Removing additional representative samples."
-        # )
+        print(
+            f"Not enough non-representative old samples to remove "
+            f"({len(non_representative_old_indices)}). "
+            f"Removing additional representative samples."
+        )
         additional_remove_needed = num_to_remove - len(non_representative_old_indices)
 
         remove_indices = non_representative_old_indices
@@ -589,10 +591,10 @@ def select_and_update_representative_samples(
     new_sample_mask = torch.zeros_like(y_train_this_epoch, dtype=torch.float32).to(device)
 
     if representative_new.shape[0] < num_labeled_sample:
-        # print(
-        #     f"Not enough representative new samples selected "
-        #     f"({representative_new.shape[0]}). Selecting additional random samples."
-        # )
+        print(
+            f"Not enough representative new samples selected "
+            f"({representative_new.shape[0]}). Selecting additional random samples."
+        )
         additional_samples_needed = num_labeled_sample - representative_new.shape[0]
 
         selected_indices = set(torch.arange(len(x_test_this_epoch))[M_t_bin.bool().cpu().numpy()])
@@ -632,8 +634,8 @@ def select_and_update_representative_samples(x_train_this_epoch, y_train_this_ep
     representative_old = x_train_this_epoch[M_c_bin.bool()]
     representative_new = x_test_this_epoch[M_t_bin.bool()]
 
-    # print(f"Selected representative old samples: {representative_old.shape}")
-    # print(f"Selected representative new samples: {representative_new.shape}")
+    print(f"Selected representative old samples: {representative_old.shape}")
+    print(f"Selected representative new samples: {representative_new.shape}")
 
     old_indices = torch.arange(len(x_train_this_epoch), device=device)
     representative_old_indices = old_indices[M_c_bin.bool()]
@@ -645,7 +647,7 @@ def select_and_update_representative_samples(x_train_this_epoch, y_train_this_ep
     num_to_remove = num_labeled_sample
 
     if len(non_representative_old_indices) < num_to_remove:
-       # print(f"Not enough non-representative old samples to remove ({len(non_representative_old_indices)}). Removing additional representative samples.")
+        print(f"Not enough non-representative old samples to remove ({len(non_representative_old_indices)}). Removing additional representative samples.")
         additional_remove_needed = num_to_remove - len(non_representative_old_indices)
         
         # Remove all non-representative samples first
@@ -669,7 +671,7 @@ def select_and_update_representative_samples(x_train_this_epoch, y_train_this_ep
     new_sample_mask = torch.zeros_like(y_train_this_epoch, dtype=torch.float32).to(device)
 
     if representative_new.shape[0] < num_labeled_sample:
-        #print(f"Not enough representative new samples selected ({representative_new.shape[0]}). Selecting additional random samples.")
+        print(f"Not enough representative new samples selected ({representative_new.shape[0]}). Selecting additional random samples.")
         additional_samples_needed = num_labeled_sample - representative_new.shape[0]
 
         selected_indices = set(torch.arange(len(x_test_this_epoch))[M_t_bin.bool().cpu().numpy()])
@@ -692,154 +694,18 @@ def select_and_update_representative_samples(x_train_this_epoch, y_train_this_ep
 
     return x_train_this_epoch, y_train_this_epoch, sorted_indices_new, new_sample_mask
 
-# def select_and_update_representative_samples_when_drift(
-#         x_train_this_epoch, y_train_this_epoch, x_test_this_epoch, y_test_this_epoch, 
-#         M_c, M_t, num_labeled_sample, device, buffer_memory_size, model, normal_recon_temp=None):
-
-#     M_c_bin = (M_c >= 0.3).float().to(device)
-#     M_t_bin = (M_t >= 0.3).float().to(device)
-
-#     representative_old = x_train_this_epoch[M_c_bin.bool()]
-#     representative_new = x_test_this_epoch[M_t_bin.bool()]
-
-#     print(f"Selected representative old samples: {representative_old.shape}")
-#     print(f"Selected representative new samples: {representative_new.shape}")
-
-#     old_indices = torch.arange(len(x_train_this_epoch), device=device)
-#     representative_old_indices = old_indices[M_c_bin.bool()]
-
-#     mask_c = torch.ones(len(x_train_this_epoch), dtype=torch.bool, device=device)
-#     mask_c[representative_old_indices] = False
-
-#     non_representative_old_indices = old_indices[mask_c]
-#     num_to_remove = num_labeled_sample
-
-#     # Remove all non-representative samples
-#     remove_indices = non_representative_old_indices
-
-#     if len(non_representative_old_indices) < num_to_remove:
-#         print(f"Not enough non-representative old samples to remove ({len(non_representative_old_indices)}). Removing additional representative samples.")
-#         additional_remove_needed = num_to_remove - len(non_representative_old_indices)
-        
-#         # Then remove the remaining number from the representative samples with the lowest scores
-#         representative_scores = M_c[M_c_bin.bool()].detach().cpu().numpy()
-#         sorted_rep_indices = torch.argsort(torch.tensor(representative_scores))[:additional_remove_needed]
-#         additional_remove_indices = representative_old_indices[sorted_rep_indices]
-
-#         remove_indices = torch.cat([remove_indices, additional_remove_indices])
-
-#     mask = torch.ones(x_train_this_epoch.size(0), dtype=torch.bool, device=device)
-#     mask[remove_indices] = False
-
-#     x_train_this_epoch = x_train_this_epoch[mask]
-#     y_train_this_epoch = y_train_this_epoch[mask]
-
-#     new_sample_mask = torch.zeros_like(y_train_this_epoch, dtype=torch.float32).to(device)
-
-#     if representative_new.shape[0] < num_labeled_sample:
-#         print(f"Not enough representative samples selected ({representative_new.shape[0]}). Selecting additional random samples.")
-#         additional_samples_needed = num_labeled_sample - representative_new.shape[0]
-
-#         selected_indices = set(torch.arange(len(x_test_this_epoch))[M_t_bin.bool().cpu().numpy()])
-#         available_indices = set(torch.arange(len(x_test_this_epoch)).cpu().numpy()) - selected_indices
-#         available_indices = torch.tensor(list(available_indices), dtype=torch.long)
-
-#         fallback_indices = available_indices[torch.randperm(len(available_indices))[:additional_samples_needed]]
-#         drift_representative_new = torch.cat([representative_new, x_test_this_epoch[fallback_indices]], dim=0)
-#         new_labels = torch.cat([y_test_this_epoch[M_t_bin.bool()], y_test_this_epoch[fallback_indices]], dim=0)
-#         sorted_indices_new = torch.cat([torch.arange(len(representative_new)), fallback_indices], dim=0)
-#     else:
-#         scores_new = M_t[M_t_bin.bool()].detach().cpu().numpy()
-#         sorted_indices_new = torch.argsort(torch.tensor(scores_new), descending=True)[:num_labeled_sample]
-#         drift_representative_new = representative_new[sorted_indices_new]
-#         new_labels = y_test_this_epoch[M_t_bin.bool()][sorted_indices_new]
-
-#     new_sample_mask = torch.cat([new_sample_mask, torch.ones(len(drift_representative_new), dtype=torch.float32).to(device)])
-#     x_train_this_epoch = torch.cat((x_train_this_epoch, drift_representative_new), dim=0)
-#     y_train_this_epoch = torch.cat((y_train_this_epoch, new_labels), dim=0)
-
-#     if len(x_train_this_epoch) < buffer_memory_size:
-#         additional_samples_needed = buffer_memory_size - len(x_train_this_epoch)
-#         print(f"Buffer memory has extra space for {additional_samples_needed} samples. Adding new samples with pseudo labels.")
-
-#         if representative_new.shape[0] > num_labeled_sample:
-#             remaining_new_samples = representative_new[torch.argsort(torch.tensor(scores_new), descending=True)[num_labeled_sample:]]
-#             # remaining_samples_needed = num_additional_samples_needed
-
-#             if remaining_new_samples.size(0) >= additional_samples_needed:
-#                 pseudo_labeled_samples = remaining_new_samples[:additional_samples_needed]
-#                 if normal_recon_temp == None:
-#                     pseudo_labels = evaluate_inputs(model, pseudo_labeled_samples, device)
-#                 else:
-#                     pseudo_labels = evaluate(normal_recon_temp, x_train_this_epoch, y_train_this_epoch, pseudo_labeled_samples, 0, model)
-#             else:
-#                 pseudo_labeled_samples = remaining_new_samples
-#                 if normal_recon_temp == None:
-#                     pseudo_labels = evaluate_inputs(model, pseudo_labeled_samples, device)
-#                 else:
-#                     pseudo_labels = evaluate(normal_recon_temp, x_train_this_epoch, y_train_this_epoch, pseudo_labeled_samples, 0, model)
-                
-#                 random_new_additional_samples_needed = additional_samples_needed - remaining_new_samples.size(0)
-                
-#                 additional_indices = torch.randperm(len(x_test_this_epoch))[:random_new_additional_samples_needed]
-#                 additional_pseudo_labeled_samples = x_test_this_epoch[additional_indices]
-#                 if normal_recon_temp == None:
-#                     additional_pseudo_labels = evaluate_inputs(model, additional_pseudo_labeled_samples, device)
-#                 else:
-#                     additional_pseudo_labels = evaluate(normal_recon_temp, x_train_this_epoch, y_train_this_epoch, additional_pseudo_labeled_samples, 0, model)
-                
-#                 pseudo_labeled_samples = torch.cat([pseudo_labeled_samples, additional_pseudo_labeled_samples], dim=0)
-#                 if normal_recon_temp == None:
-#                     if random_new_additional_samples_needed > 1:
-#                         pseudo_labels = torch.cat([torch.tensor(pseudo_labels), torch.tensor(additional_pseudo_labels)], dim=0)
-#                     else:
-#                         pseudo_labels = torch.cat([torch.tensor(pseudo_labels), torch.tensor(additional_pseudo_labels).unsqueeze(0)], dim=0)
-#                 else:
-#                     if random_new_additional_samples_needed > 1:
-#                         pseudo_labels = torch.cat([pseudo_labels, additional_pseudo_labels], dim=0)
-#                     else:
-#                         pseudo_labels = torch.cat([pseudo_labels, additional_pseudo_labels.unsqueeze(0)], dim=0)
-#         else:
-#             additional_indices = torch.randperm(len(x_test_this_epoch))[:additional_samples_needed]
-#             pseudo_labeled_samples = x_test_this_epoch[additional_indices]
-#             if normal_recon_temp == None:
-#                 pseudo_labels = evaluate_inputs(model, pseudo_labeled_samples, device)
-#             else:
-#                 pseudo_labels = evaluate(normal_recon_temp, x_train_this_epoch, y_train_this_epoch, pseudo_labeled_samples, 0, model)
-
-#         x_train_this_epoch = torch.cat((x_train_this_epoch, pseudo_labeled_samples), dim=0)
-#         if normal_recon_temp == None:
-#             if additional_samples_needed > 1:
-#                 y_train_this_epoch = torch.cat((y_train_this_epoch, torch.tensor(pseudo_labels).to(device)), dim=0)
-#             else:
-#                 y_train_this_epoch = torch.cat((y_train_this_epoch, torch.tensor(pseudo_labels).unsqueeze(0).to(device)), dim=0)
-#         else:
-#             if additional_samples_needed > 1:
-#                 y_train_this_epoch = torch.cat((y_train_this_epoch, pseudo_labels.to(device)), dim=0)
-#             else:
-#                 y_train_this_epoch = torch.cat((y_train_this_epoch, pseudo_labels.unsqueeze(0).to(device)), dim=0)
-        
-#         new_sample_mask = torch.cat([new_sample_mask, torch.zeros(len(pseudo_labeled_samples), dtype=torch.float32).to(device)])
-
-#     return x_train_this_epoch, y_train_this_epoch, sorted_indices_new, new_sample_mask
-
-# 
-
 def select_and_update_representative_samples_when_drift(
-        x_train_this_epoch, y_train_this_epoch, x_test_this_epoch, y_test_this_epoch,
+        x_train_this_epoch, y_train_this_epoch, x_test_this_epoch, y_test_this_epoch, 
         M_c, M_t, num_labeled_sample, device, buffer_memory_size, model, normal_recon_temp=None):
 
-    # -----------------------------
-    # 1. Select representative old/new samples
-    # -----------------------------
     M_c_bin = (M_c >= 0.3).float().to(device)
     M_t_bin = (M_t >= 0.3).float().to(device)
 
     representative_old = x_train_this_epoch[M_c_bin.bool()]
     representative_new = x_test_this_epoch[M_t_bin.bool()]
 
-    # print(f"Selected representative old samples: {representative_old.shape}")
-    # print(f"Selected representative new samples: {representative_new.shape}")
+    print(f"Selected representative old samples: {representative_old.shape}")
+    print(f"Selected representative new samples: {representative_new.shape}")
 
     old_indices = torch.arange(len(x_train_this_epoch), device=device)
     representative_old_indices = old_indices[M_c_bin.bool()]
@@ -850,16 +716,14 @@ def select_and_update_representative_samples_when_drift(
     non_representative_old_indices = old_indices[mask_c]
     num_to_remove = num_labeled_sample
 
-    # remove all non-representative samples first
+    # Remove all non-representative samples
     remove_indices = non_representative_old_indices
 
     if len(non_representative_old_indices) < num_to_remove:
-        # print(
-        #     f"Not enough non-representative old samples to remove "
-        #     f"({len(non_representative_old_indices)}). Removing additional representative samples."
-        # )
+        print(f"Not enough non-representative old samples to remove ({len(non_representative_old_indices)}). Removing additional representative samples.")
         additional_remove_needed = num_to_remove - len(non_representative_old_indices)
-
+        
+        # Then remove the remaining number from the representative samples with the lowest scores
         representative_scores = M_c[M_c_bin.bool()].detach().cpu().numpy()
         sorted_rep_indices = torch.argsort(torch.tensor(representative_scores))[:additional_remove_needed]
         additional_remove_indices = representative_old_indices[sorted_rep_indices]
@@ -872,17 +736,10 @@ def select_and_update_representative_samples_when_drift(
     x_train_this_epoch = x_train_this_epoch[mask]
     y_train_this_epoch = y_train_this_epoch[mask]
 
-    # mask indicating which samples are "new" vs old
     new_sample_mask = torch.zeros_like(y_train_this_epoch, dtype=torch.float32).to(device)
 
-    # -----------------------------
-    # 2. Add labeled/new representative samples
-    # -----------------------------
     if representative_new.shape[0] < num_labeled_sample:
-        # print(
-        #     f"Not enough representative samples selected "
-        #     f"({representative_new.shape[0]}). Selecting additional random samples."
-        # )
+        print(f"Not enough representative samples selected ({representative_new.shape[0]}). Selecting additional random samples.")
         additional_samples_needed = num_labeled_sample - representative_new.shape[0]
 
         selected_indices = set(torch.arange(len(x_test_this_epoch))[M_t_bin.bool().cpu().numpy()])
@@ -890,125 +747,85 @@ def select_and_update_representative_samples_when_drift(
         available_indices = torch.tensor(list(available_indices), dtype=torch.long)
 
         fallback_indices = available_indices[torch.randperm(len(available_indices))[:additional_samples_needed]]
-        drift_representative_new = torch.cat(
-            [representative_new, x_test_this_epoch[fallback_indices]], dim=0
-        )
-        new_labels = torch.cat(
-            [y_test_this_epoch[M_t_bin.bool()], y_test_this_epoch[fallback_indices]], dim=0
-        )
-        sorted_indices_new = torch.cat(
-            [torch.arange(len(representative_new)), fallback_indices], dim=0
-        )
+        drift_representative_new = torch.cat([representative_new, x_test_this_epoch[fallback_indices]], dim=0)
+        new_labels = torch.cat([y_test_this_epoch[M_t_bin.bool()], y_test_this_epoch[fallback_indices]], dim=0)
+        sorted_indices_new = torch.cat([torch.arange(len(representative_new)), fallback_indices], dim=0)
     else:
         scores_new = M_t[M_t_bin.bool()].detach().cpu().numpy()
         sorted_indices_new = torch.argsort(torch.tensor(scores_new), descending=True)[:num_labeled_sample]
         drift_representative_new = representative_new[sorted_indices_new]
         new_labels = y_test_this_epoch[M_t_bin.bool()][sorted_indices_new]
 
-    # mark these as new labeled samples
-    new_sample_mask = torch.cat(
-        [new_sample_mask, torch.ones(len(drift_representative_new), dtype=torch.float32).to(device)]
-    )
+    new_sample_mask = torch.cat([new_sample_mask, torch.ones(len(drift_representative_new), dtype=torch.float32).to(device)])
     x_train_this_epoch = torch.cat((x_train_this_epoch, drift_representative_new), dim=0)
     y_train_this_epoch = torch.cat((y_train_this_epoch, new_labels), dim=0)
 
-    # -----------------------------
-    # 3. Fill buffer with pseudo‑labeled samples if needed
-    # -----------------------------
     if len(x_train_this_epoch) < buffer_memory_size:
         additional_samples_needed = buffer_memory_size - len(x_train_this_epoch)
-        print(
-            f"Buffer memory has extra space for {additional_samples_needed} samples. "
-            f"Adding new samples with pseudo labels."
-        )
+        print(f"Buffer memory has extra space for {additional_samples_needed} samples. Adding new samples with pseudo labels.")
 
-        # if we still have unused representative_new, use them preferentially
         if representative_new.shape[0] > num_labeled_sample:
-            scores_new = M_t[M_t_bin.bool()].detach().cpu().numpy()
-            # remaining reps after the top num_labeled_sample already used
-            remaining_new_samples = representative_new[
-                torch.argsort(torch.tensor(scores_new), descending=True)[num_labeled_sample:]
-            ]
+            remaining_new_samples = representative_new[torch.argsort(torch.tensor(scores_new), descending=True)[num_labeled_sample:]]
+            # remaining_samples_needed = num_additional_samples_needed
 
             if remaining_new_samples.size(0) >= additional_samples_needed:
                 pseudo_labeled_samples = remaining_new_samples[:additional_samples_needed]
-                if normal_recon_temp is None:
+                if normal_recon_temp == None:
                     pseudo_labels = evaluate_inputs(model, pseudo_labeled_samples, device)
                 else:
-                    pseudo_labels = evaluate(
-                        normal_recon_temp,
-                        x_train_this_epoch, y_train_this_epoch,
-                        pseudo_labeled_samples, 0, model
-                    )
+                    pseudo_labels = evaluate(normal_recon_temp, x_train_this_epoch, y_train_this_epoch, pseudo_labeled_samples, 0, model)
             else:
-                # use all remaining + random extra from x_test_this_epoch
                 pseudo_labeled_samples = remaining_new_samples
-                if normal_recon_temp is None:
+                if normal_recon_temp == None:
                     pseudo_labels = evaluate_inputs(model, pseudo_labeled_samples, device)
                 else:
-                    pseudo_labels = evaluate(
-                        normal_recon_temp,
-                        x_train_this_epoch, y_train_this_epoch,
-                        pseudo_labeled_samples, 0, model
-                    )
-
+                    pseudo_labels = evaluate(normal_recon_temp, x_train_this_epoch, y_train_this_epoch, pseudo_labeled_samples, 0, model)
+                
                 random_new_additional_samples_needed = additional_samples_needed - remaining_new_samples.size(0)
+                
                 additional_indices = torch.randperm(len(x_test_this_epoch))[:random_new_additional_samples_needed]
                 additional_pseudo_labeled_samples = x_test_this_epoch[additional_indices]
-
-                if normal_recon_temp is None:
+                if normal_recon_temp == None:
                     additional_pseudo_labels = evaluate_inputs(model, additional_pseudo_labeled_samples, device)
                 else:
-                    additional_pseudo_labels = evaluate(
-                        normal_recon_temp,
-                        x_train_this_epoch, y_train_this_epoch,
-                        additional_pseudo_labeled_samples, 0, model
-                    )
-
-                # concat samples
-                pseudo_labeled_samples = torch.cat(
-                    [pseudo_labeled_samples, additional_pseudo_labeled_samples], dim=0
-                )
-
-                # ---- SAFE CONCAT OF LABELS (force 1‑D) ----
-                base = torch.as_tensor(pseudo_labels)
-                extra = torch.as_tensor(additional_pseudo_labels)
-                if base.dim() == 0:
-                    base = base.unsqueeze(0)
-                if extra.dim() == 0:
-                    extra = extra.unsqueeze(0)
-                pseudo_labels = torch.cat([base, extra], dim=0)
+                    additional_pseudo_labels = evaluate(normal_recon_temp, x_train_this_epoch, y_train_this_epoch, additional_pseudo_labeled_samples, 0, model)
+                
+                pseudo_labeled_samples = torch.cat([pseudo_labeled_samples, additional_pseudo_labeled_samples], dim=0)
+                if normal_recon_temp == None:
+                    if random_new_additional_samples_needed > 1:
+                        pseudo_labels = torch.cat([torch.tensor(pseudo_labels), torch.tensor(additional_pseudo_labels)], dim=0)
+                    else:
+                        pseudo_labels = torch.cat([torch.tensor(pseudo_labels), torch.tensor(additional_pseudo_labels).unsqueeze(0)], dim=0)
+                else:
+                    if random_new_additional_samples_needed > 1:
+                        pseudo_labels = torch.cat([pseudo_labels, additional_pseudo_labels], dim=0)
+                    else:
+                        pseudo_labels = torch.cat([pseudo_labels, additional_pseudo_labels.unsqueeze(0)], dim=0)
         else:
-            # no extra reps; sample directly from x_test_this_epoch
             additional_indices = torch.randperm(len(x_test_this_epoch))[:additional_samples_needed]
             pseudo_labeled_samples = x_test_this_epoch[additional_indices]
-            if normal_recon_temp is None:
+            if normal_recon_temp == None:
                 pseudo_labels = evaluate_inputs(model, pseudo_labeled_samples, device)
             else:
-                pseudo_labels = evaluate(
-                    normal_recon_temp,
-                    x_train_this_epoch, y_train_this_epoch,
-                    pseudo_labeled_samples, 0, model
-                )
+                pseudo_labels = evaluate(normal_recon_temp, x_train_this_epoch, y_train_this_epoch, pseudo_labeled_samples, 0, model)
 
-        # append pseudo‑labeled samples to train set
         x_train_this_epoch = torch.cat((x_train_this_epoch, pseudo_labeled_samples), dim=0)
-
-        if normal_recon_temp is None:
-            labels_tensor = torch.as_tensor(pseudo_labels, device=device)
+        if normal_recon_temp == None:
+            if additional_samples_needed > 1:
+                y_train_this_epoch = torch.cat((y_train_this_epoch, torch.tensor(pseudo_labels).to(device)), dim=0)
+            else:
+                y_train_this_epoch = torch.cat((y_train_this_epoch, torch.tensor(pseudo_labels).unsqueeze(0).to(device)), dim=0)
         else:
-            labels_tensor = pseudo_labels.to(device)
-
-        if labels_tensor.dim() == 0:
-            labels_tensor = labels_tensor.unsqueeze(0)
-
-        y_train_this_epoch = torch.cat((y_train_this_epoch, labels_tensor), dim=0)
-
-        new_sample_mask = torch.cat(
-            [new_sample_mask, torch.zeros(len(pseudo_labeled_samples), dtype=torch.float32).to(device)]
-        )
+            if additional_samples_needed > 1:
+                y_train_this_epoch = torch.cat((y_train_this_epoch, pseudo_labels.to(device)), dim=0)
+            else:
+                y_train_this_epoch = torch.cat((y_train_this_epoch, pseudo_labels.unsqueeze(0).to(device)), dim=0)
+        
+        new_sample_mask = torch.cat([new_sample_mask, torch.zeros(len(pseudo_labeled_samples), dtype=torch.float32).to(device)])
 
     return x_train_this_epoch, y_train_this_epoch, sorted_indices_new, new_sample_mask
+
+#
 
 # (keeping your long select_and_update_representative_samples_when_drift,
 # evaluate, process_batch, drift detection as-is, since they’re not used
