@@ -536,93 +536,93 @@ def optimize_new_mask(control_res, treatment_res, M_c, device,
 
 
 
-def select_and_update_representative_samples(
-        x_train_this_epoch, y_train_this_epoch,
-        x_test_this_epoch, y_test_this_epoch,
-        M_c, M_t, num_labeled_sample, device):
+# # def select_and_update_representative_samples(
+#         x_train_this_epoch, y_train_this_epoch,
+#         x_test_this_epoch, y_test_this_epoch,
+#         M_c, M_t, num_labeled_sample, device):
 
-    M_c_bin = (M_c >= 0.3).float().to(device)
-    M_t_bin = (M_t >= 0.3).float().to(device)
+#     M_c_bin = (M_c >= 0.3).float().to(device)
+#     M_t_bin = (M_t >= 0.3).float().to(device)
 
-    representative_old = x_train_this_epoch[M_c_bin.bool()]
-    representative_new = x_test_this_epoch[M_t_bin.bool()]
+#     representative_old = x_train_this_epoch[M_c_bin.bool()]
+#     representative_new = x_test_this_epoch[M_t_bin.bool()]
 
-    print(f"Selected representative old samples: {representative_old.shape}")
-    print(f"Selected representative new samples: {representative_new.shape}")
+#     print(f"Selected representative old samples: {representative_old.shape}")
+#     print(f"Selected representative new samples: {representative_new.shape}")
 
-    old_indices = torch.arange(len(x_train_this_epoch), device=device)
-    representative_old_indices = old_indices[M_c_bin.bool()]
+#     old_indices = torch.arange(len(x_train_this_epoch), device=device)
+#     representative_old_indices = old_indices[M_c_bin.bool()]
 
-    mask_c = torch.ones(len(x_train_this_epoch), dtype=torch.bool, device=device)
-    mask_c[representative_old_indices] = False
+#     mask_c = torch.ones(len(x_train_this_epoch), dtype=torch.bool, device=device)
+#     mask_c[representative_old_indices] = False
 
-    non_representative_old_indices = old_indices[mask_c]
-    num_to_remove = num_labeled_sample
+#     non_representative_old_indices = old_indices[mask_c]
+#     num_to_remove = num_labeled_sample
 
-    if len(non_representative_old_indices) < num_to_remove:
-        print(
-            f"Not enough non-representative old samples to remove "
-            f"({len(non_representative_old_indices)}). "
-            f"Removing additional representative samples."
-        )
-        additional_remove_needed = num_to_remove - len(non_representative_old_indices)
+#     if len(non_representative_old_indices) < num_to_remove:
+#         print(
+#             f"Not enough non-representative old samples to remove "
+#             f"({len(non_representative_old_indices)}). "
+#             f"Removing additional representative samples."
+#         )
+#         additional_remove_needed = num_to_remove - len(non_representative_old_indices)
 
-        remove_indices = non_representative_old_indices
+#         remove_indices = non_representative_old_indices
 
-        representative_scores = M_c[M_c_bin.bool()].detach().cpu().numpy()
-        sorted_rep_indices = torch.argsort(torch.tensor(representative_scores))[:additional_remove_needed]
-        additional_remove_indices = representative_old_indices[sorted_rep_indices]
+#         representative_scores = M_c[M_c_bin.bool()].detach().cpu().numpy()
+#         sorted_rep_indices = torch.argsort(torch.tensor(representative_scores))[:additional_remove_needed]
+#         additional_remove_indices = representative_old_indices[sorted_rep_indices]
 
-        remove_indices = torch.cat([remove_indices, additional_remove_indices])
-    else:
-        remove_indices = non_representative_old_indices[
-            torch.randperm(len(non_representative_old_indices))[:num_to_remove]
-        ]
+#         remove_indices = torch.cat([remove_indices, additional_remove_indices])
+#     else:
+#         remove_indices = non_representative_old_indices[
+#             torch.randperm(len(non_representative_old_indices))[:num_to_remove]
+#         ]
 
-    mask = torch.ones(x_train_this_epoch.size(0), dtype=torch.bool, device=device)
-    mask[remove_indices] = False
+#     mask = torch.ones(x_train_this_epoch.size(0), dtype=torch.bool, device=device)
+#     mask[remove_indices] = False
 
-    x_train_this_epoch = x_train_this_epoch[mask]
-    y_train_this_epoch = y_train_this_epoch[mask]
+#     x_train_this_epoch = x_train_this_epoch[mask]
+#     y_train_this_epoch = y_train_this_epoch[mask]
 
-    new_sample_mask = torch.zeros_like(y_train_this_epoch, dtype=torch.float32).to(device)
+#     new_sample_mask = torch.zeros_like(y_train_this_epoch, dtype=torch.float32).to(device)
 
-    if representative_new.shape[0] < num_labeled_sample:
-        print(
-            f"Not enough representative new samples selected "
-            f"({representative_new.shape[0]}). Selecting additional random samples."
-        )
-        additional_samples_needed = num_labeled_sample - representative_new.shape[0]
+#     if representative_new.shape[0] < num_labeled_sample:
+#         print(
+#             f"Not enough representative new samples selected "
+#             f"({representative_new.shape[0]}). Selecting additional random samples."
+#         )
+#         additional_samples_needed = num_labeled_sample - representative_new.shape[0]
 
-        selected_indices = set(torch.arange(len(x_test_this_epoch))[M_t_bin.bool().cpu().numpy()])
-        available_indices = set(torch.arange(len(x_test_this_epoch)).cpu().numpy()) - selected_indices
-        available_indices = torch.tensor(list(available_indices), dtype=torch.long)
+#         selected_indices = set(torch.arange(len(x_test_this_epoch))[M_t_bin.bool().cpu().numpy()])
+#         available_indices = set(torch.arange(len(x_test_this_epoch)).cpu().numpy()) - selected_indices
+#         available_indices = torch.tensor(list(available_indices), dtype=torch.long)
 
-        fallback_indices = available_indices[
-            torch.randperm(len(available_indices))[:additional_samples_needed]
-        ]
-        drift_representative_new = torch.cat(
-            [representative_new, x_test_this_epoch[fallback_indices]], dim=0
-        )
-        new_labels = torch.cat(
-            [y_test_this_epoch[M_t_bin.bool()], y_test_this_epoch[fallback_indices]], dim=0
-        )
-        sorted_indices_new = torch.cat(
-            [torch.arange(len(representative_new)), fallback_indices], dim=0
-        )
-    else:
-        scores_new = M_t[M_t_bin.bool()].detach().cpu().numpy()
-        sorted_indices_new = torch.argsort(torch.tensor(scores_new), descending=True)[:num_labeled_sample]
-        drift_representative_new = representative_new[sorted_indices_new]
-        new_labels = y_test_this_epoch[M_t_bin.bool()][sorted_indices_new]
+#         fallback_indices = available_indices[
+#             torch.randperm(len(available_indices))[:additional_samples_needed]
+#         ]
+#         drift_representative_new = torch.cat(
+#             [representative_new, x_test_this_epoch[fallback_indices]], dim=0
+#         )
+#         new_labels = torch.cat(
+#             [y_test_this_epoch[M_t_bin.bool()], y_test_this_epoch[fallback_indices]], dim=0
+#         )
+#         sorted_indices_new = torch.cat(
+#             [torch.arange(len(representative_new)), fallback_indices], dim=0
+#         )
+#     else:
+#         scores_new = M_t[M_t_bin.bool()].detach().cpu().numpy()
+#         sorted_indices_new = torch.argsort(torch.tensor(scores_new), descending=True)[:num_labeled_sample]
+#         drift_representative_new = representative_new[sorted_indices_new]
+#         new_labels = y_test_this_epoch[M_t_bin.bool()][sorted_indices_new]
 
-    new_sample_mask = torch.cat(
-        [new_sample_mask, torch.ones(len(drift_representative_new), dtype=torch.float32).to(device)]
-    )
-    x_train_this_epoch = torch.cat([x_train_this_epoch, drift_representative_new], dim=0)
-    y_train_this_epoch = torch.cat([y_train_this_epoch, new_labels], dim=0)
+#     new_sample_mask = torch.cat(
+#         [new_sample_mask, torch.ones(len(drift_representative_new), dtype=torch.float32).to(device)]
+#     )
+#     x_train_this_epoch = torch.cat([x_train_this_epoch, drift_representative_new], dim=0)
+#     y_train_this_epoch = torch.cat([y_train_this_epoch, new_labels], dim=0)
 
-    return x_train_this_epoch, y_train_this_epoch, sorted_indices_new, new_sample_mask
+#     return x_train_this_epoch, y_train_this_epoch, sorted_indices_new, new_sample_mask
 
 def select_and_update_representative_samples(x_train_this_epoch, y_train_this_epoch, x_test_this_epoch, y_test_this_epoch, M_c, M_t, num_labeled_sample, device):
     M_c_bin = (M_c >= 0.3).float().to(device)
@@ -972,7 +972,10 @@ def detect_drift(new_data, control_data, window_size, drift_threshold):
         window_data = new_data[i:i + window_size]
         if len(window_data) < window_size:
             break
-        ks_statistic, p_value = ks_2samp(control_data.cpu().numpy(), window_data.cpu().numpy())
+        ks_statistic, p_value = ks_2samp(
+    control_data.view(-1).cpu().numpy(),
+    window_data.view(-1).cpu().numpy()
+)
         if p_value < drift_threshold:
             print(
                 f"!!!!!!!!!!!!!!!!!!!!! Drift detected in window {i // window_size + 1} "

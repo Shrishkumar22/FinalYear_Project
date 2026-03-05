@@ -2,7 +2,7 @@ import os
 import torch
 import base64
 import io
-import requests
+import httpx
 import asyncio
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -88,7 +88,7 @@ async def train_local(req: TrainCommand):
         print(f"[{CLIENT_ID}] Starting local training...")
 
         # Run training
-        student_main(model, req.round, CLIENT_ID)
+        student_main(model, req.round, CLIENT_ID, device=device)
 
         print(f"[{CLIENT_ID}] Local training finished")
 
@@ -123,24 +123,18 @@ async def train_local(req: TrainCommand):
 
 @app.on_event("startup")
 async def register_with_server():
-
-    await asyncio.sleep(3)
-
+    await asyncio.sleep(5)  # give server more time too
     print(f"\n[{CLIENT_ID}] Registering with server...")
-
     try:
-        response = requests.post(
-            f"{SERVER_URL}/register_client",
-            json={
-                "client_id": CLIENT_ID,
-                "url": CLIENT_URL,
-                "trust": CLIENT_TRUST
-            },
-            timeout=5
-        )
-
-        print(f"[{CLIENT_ID}] Registration response:",
-              response.status_code)
-
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                f"{SERVER_URL}/register_client",
+                json={
+                    "client_id": CLIENT_ID,
+                    "url": CLIENT_URL,
+                    "trust": CLIENT_TRUST
+                }
+            )
+        print(f"[{CLIENT_ID}] Registration response:", response.status_code)
     except Exception as e:
         print(f"[{CLIENT_ID}] Registration error:", e)

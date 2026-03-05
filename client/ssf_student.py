@@ -14,12 +14,14 @@ from sklearn.model_selection import train_test_split
 from utils import *
 from utils import AE_classifier
 
+device = torch.device("cpu")
+
 # -----------------------------
 # CONFIGURATION
 # -----------------------------
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 sample_interval = 5000
+MAX_WINDOWS = 10 
 drift_threshold = 0.05
 num_labeled_sample = 50
 memory = 1000
@@ -147,6 +149,7 @@ def online_adaptation(model, teacher_model,
 
     start_idx = 0
     count = 0
+    MAX_WINDOWS = 10
 
     while start_idx < len(x_test):
 
@@ -262,12 +265,14 @@ def online_adaptation(model, teacher_model,
         ))
 
     # ---------------- FINAL METRICS ----------------
+    processed_len = min(count * sample_interval, len(x_test))
     all_labeled_indices = np.hstack(labeled_indices)
-    mask = np.ones(len(x_test), dtype=bool)
-    mask[all_labeled_indices] = False
+    mask = np.ones(processed_len, dtype=bool)
+    valid_indices = all_labeled_indices[all_labeled_indices < processed_len]
+    mask[valid_indices] = False
 
-    y_test_pseudo = y_train_detection[-len(x_test):][mask]
-    y_test_true = y_test[mask]
+    y_test_pseudo = y_train_detection[:processed_len][mask]
+    y_test_true = y_test[:processed_len][mask]
 
     perf = score_detail(y_test_true.cpu().numpy(),
                         y_test_pseudo.cpu().numpy())
@@ -287,18 +292,22 @@ def online_adaptation(model, teacher_model,
 # MAIN ENTRY (UNCHANGED SKELETON)
 # =====================================================
 
-def main(teacher_model, round, id):
-
+def main(teacher_model, round, id, device=None):
+    if device is None:
+        device = torch.device("cpu")
     teacher_model.to(device)
     teacher_model.eval()
 
     model = AE_classifier(input_dim=17).to(device)
     model.load_state_dict(teacher_model.state_dict())
 
-    if id == 1:
-        data_path = "client1_test.csv"
-    else:
-        data_path = "/app/client2_test.csv"
+    data_path = f"{id}_test.csv"
+
+    if not os.path.exists(data_path):
+        data_path = f"/app/{id}_test.csv"
+
+    # if not os.path.exists(data_path):
+    #     raise FileNotFoundError(f"{data_path} not found for client {id}")
 
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"{data_path} not found.")
