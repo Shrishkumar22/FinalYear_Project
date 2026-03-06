@@ -21,11 +21,11 @@ device = torch.device("cpu")
 # -----------------------------
 
 sample_interval = 5000
-MAX_WINDOWS = 10 
+MAX_WINDOWS = 10          # ← ENFORCED: only process 10 windows (~50k samples) per round
 drift_threshold = 0.05
 num_labeled_sample = 50
 memory = 1000
-epoch_1 = 5
+epoch_1 = 3               # ← reduced from 5 to 3 epochs to speed up further
 bs = 128
 
 new_sample_weight = 3
@@ -42,7 +42,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 
 # =====================================================
-# IMPROVED LOSSES (FROM NEW STUDENT)
+# IMPROVED LOSSES
 # =====================================================
 
 class SupervisedContrastiveLoss(nn.Module):
@@ -53,23 +53,17 @@ class SupervisedContrastiveLoss(nn.Module):
     def forward(self, features, labels):
         features = F.normalize(features, p=2, dim=1)
         labels = labels.contiguous().view(-1, 1)
-
         mask = torch.eq(labels, labels.T).float()
         similarity_matrix = torch.matmul(features, features.T) / self.temperature
-
         logits_max, _ = torch.max(similarity_matrix, dim=1, keepdim=True)
         logits = similarity_matrix - logits_max.detach()
-
         logits_mask = torch.ones_like(mask)
         logits_mask.fill_diagonal_(0)
         mask = mask * logits_mask
-
         exp_logits = torch.exp(logits) * logits_mask
         log_prob = logits - torch.log(exp_logits.sum(1, keepdim=True) + 1e-10)
-
         mask_sum = mask.sum(1).clamp(min=1.0)
         mean_log_prob_pos = (mask * log_prob).sum(1) / mask_sum
-
         return -mean_log_prob_pos.mean()
 
 
@@ -81,9 +75,7 @@ class FocalLoss(nn.Module):
 
     def forward(self, inputs, targets):
         BCE_loss = F.binary_cross_entropy_with_logits(
-            inputs.squeeze(),
-            targets.float(),
-            reduction='none'
+            inputs.squeeze(), targets.float(), reduction='none'
         )
         pt = torch.exp(-BCE_loss)
         return self.alpha * (1 - pt) ** self.gamma * BCE_loss
@@ -102,7 +94,9 @@ def load_online_data_csv(memory_ratio: float = 0.20, datapath: str = "client1_te
     Y_all = torch.LongTensor(Y_all)
 
     x_train, x_stream, y_train, y_stream = train_test_split(
-        X_all, Y_all, test_size=(1 - memory_ratio), shuffle=True
+        X_all, Y_all, test_size=(1 - memory_ratio),
+        shuffle=True,
+        random_state=42  # ← add this so same split every round
     )
 
     x_train = x_train.to(device)
@@ -120,7 +114,7 @@ def load_online_data(datapath: str = "client1_test.csv"):
 
 
 # =====================================================
-# ONLINE ADAPTATION (IMPROVED TRAINING LOGIC EMBEDDED)
+# ONLINE ADAPTATION
 # =====================================================
 
 def online_adaptation(model, teacher_model,
@@ -149,15 +143,19 @@ def online_adaptation(model, teacher_model,
 
     start_idx = 0
     count = 0
-    MAX_WINDOWS = 10
+    total_windows = min(MAX_WINDOWS, len(x_test) // sample_interval + 1)
 
-    while start_idx < len(x_test):
+    print(f"[TRAIN] Starting training: {total_windows} windows x {sample_interval} samples x {epoch_1} epochs", flush=True)
+
+    while start_idx < len(x_test) and count < MAX_WINDOWS:  # ← MAX_WINDOWS enforced here
 
         count += 1
         end_idx = min(start_idx + sample_interval, len(x_test))
         x_test_this_epoch = x_test[start_idx:end_idx]
         y_test_this_epoch = y_test[start_idx:end_idx]
         start_idx += sample_interval
+
+        print(f"[TRAIN] Window {count}/{total_windows} | samples {start_idx-sample_interval}-{end_idx}", flush=True)
 
         # ---------------- Drift detection ----------------
         with torch.no_grad():
@@ -166,13 +164,17 @@ def online_adaptation(model, teacher_model,
 
         drift = detect_drift(test_logits, train_logits, sample_interval, drift_threshold)
 
+        if drift:
+            print(f"[TRAIN] !! Drift detected in window {count}", flush=True)
+        else:
+            print(f"[TRAIN] No drift in window {count}", flush=True)
+
         # ---------------- Mask optimization ----------------
         control_res = train_logits.cpu().numpy()
         treatment_res = test_logits.cpu().numpy()
 
         M_c = optimize_old_mask(control_res, treatment_res, device,
                                 initialization=old_init, lr=opt_old_lr)
-
         M_t = optimize_new_mask(control_res, treatment_res, M_c, device,
                                 initialization=new_init, lr=opt_new_lr)
 
@@ -196,10 +198,7 @@ def online_adaptation(model, teacher_model,
 
         labeled_indices.append(start_idx - sample_interval + labeled_idx.cpu().numpy())
 
-        # =====================================================
-        # IMPROVED TRAINING BLOCK
-        # =====================================================
-
+        # ---------------- Training ----------------
         train_loader = DataLoader(
             TensorDataset(x_train, y_train, new_mask),
             batch_size=bs, shuffle=True
@@ -209,26 +208,17 @@ def online_adaptation(model, teacher_model,
         model.train()
 
         for epoch in range(epoch_1):
+            epoch_loss = 0.0
             for inputs, labels, mask_new in train_loader:
-
                 optimizer.zero_grad()
-
                 features, recon_vec, logits = model(inputs)
 
-                # 1️⃣ Contrastive
                 contrastive_loss = contrastive_loss_fn(features, labels)
-
-                # 2️⃣ Focal classification
                 focal_loss = focal_loss_fn(logits, labels)
-                weighted_focal = focal_loss * (
-                    (1 - mask_new) + mask_new * new_sample_weight
-                )
+                weighted_focal = focal_loss * ((1 - mask_new) + mask_new * new_sample_weight)
                 class_loss = weighted_focal.mean()
-
-                # 3️⃣ Reconstruction
                 recon_loss = recon_loss_fn(recon_vec, inputs)
 
-                # 4️⃣ LwF Distillation
                 with torch.no_grad():
                     _, _, teacher_logits = teacher_model(inputs)
                 dist_loss = F.mse_loss(logits, teacher_logits)
@@ -246,6 +236,9 @@ def online_adaptation(model, teacher_model,
                 total_loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
+                epoch_loss += total_loss.item()
+
+            print(f"[TRAIN] Window {count} Epoch {epoch+1}/{epoch_1} loss={epoch_loss:.4f}", flush=True)
 
         teacher_model.load_state_dict(model.state_dict())
 
@@ -264,6 +257,8 @@ def online_adaptation(model, teacher_model,
             torch.tensor(preds, device=device)
         ))
 
+        print(f"[TRAIN] Window {count} done", flush=True)
+
     # ---------------- FINAL METRICS ----------------
     processed_len = min(count * sample_interval, len(x_test))
     all_labeled_indices = np.hstack(labeled_indices)
@@ -274,14 +269,11 @@ def online_adaptation(model, teacher_model,
     y_test_pseudo = y_train_detection[:processed_len][mask]
     y_test_true = y_test[:processed_len][mask]
 
-    perf = score_detail(y_test_true.cpu().numpy(),
-                        y_test_pseudo.cpu().numpy())
+    perf = score_detail(y_test_true.cpu().numpy(), y_test_pseudo.cpu().numpy())
 
-    log_entry = {
-        "round": round_number,
-        "metrics": perf
-    }
+    print(f"[TRAIN] Round {round_number} metrics: {perf}", flush=True)
 
+    log_entry = {"round": round_number, "metrics": perf}
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps(log_entry) + "\n")
 
@@ -289,12 +281,13 @@ def online_adaptation(model, teacher_model,
 
 
 # =====================================================
-# MAIN ENTRY (UNCHANGED SKELETON)
+# MAIN ENTRY
 # =====================================================
 
 def main(teacher_model, round, id, device=None):
     if device is None:
         device = torch.device("cpu")
+
     teacher_model.to(device)
     teacher_model.eval()
 
@@ -302,28 +295,23 @@ def main(teacher_model, round, id, device=None):
     model.load_state_dict(teacher_model.state_dict())
 
     data_path = f"{id}_test.csv"
-
     if not os.path.exists(data_path):
         data_path = f"/app/{id}_test.csv"
-
-    # if not os.path.exists(data_path):
-    #     raise FileNotFoundError(f"{data_path} not found for client {id}")
-
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"{data_path} not found.")
 
+    print(f"[TRAIN] Loading data from {data_path}", flush=True)
     x_train, y_train, x_test, y_test = load_online_data(datapath=data_path)
+    print(f"[TRAIN] Data loaded: x_train={x_train.shape}, x_test={x_test.shape}", flush=True)
 
     final_model = online_adaptation(
-        model,
-        teacher_model,
-        x_train,
-        y_train,
-        x_test,
-        y_test,
+        model, teacher_model,
+        x_train, y_train,
+        x_test, y_test,
         round_number=round,
         device=device,
     )
 
     torch.save(final_model.state_dict(), f"updated_student_{id}.pth")
+    print(f"[TRAIN] Model saved: updated_student_{id}.pth", flush=True)
     return final_model

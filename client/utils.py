@@ -971,23 +971,14 @@ def evaluate(normal_recon_temp, x_train, y_train, x_test, y_test,
 
 
 def detect_drift(new_data, control_data, window_size, drift_threshold):
-    for i in range(0, len(new_data), window_size):
-        window_data = new_data[i:i + window_size]
-        if len(window_data) < window_size:
-            break
-        ks_statistic, p_value = ks_2samp(
-    control_data.view(-1).cpu().numpy(),
-    window_data.view(-1).cpu().numpy()
-)
-        if p_value < drift_threshold:
-            print(
-                f"!!!!!!!!!!!!!!!!!!!!! Drift detected in window {i // window_size + 1} "
-                f"(p-value: {p_value})"
-            )
-            return True
-        else:
-            print(
-                f"No drift detected in window {i // window_size + 1} "
-                f"(p-value: {p_value})"
-            )
-    return False
+    # new_data is already a pre-sliced window from ssf_student.py
+    ks_statistic, p_value = ks_2samp(
+        control_data.view(-1).cpu().numpy(),
+        new_data.view(-1).cpu().numpy()
+    )
+    if p_value < drift_threshold:
+        print(f"!!! Drift detected (p={p_value:.4f}, ks={ks_statistic:.4f})", flush=True)
+        return True
+    else:
+        print(f"No drift (p={p_value:.4f}, ks={ks_statistic:.4f})", flush=True)
+        return False

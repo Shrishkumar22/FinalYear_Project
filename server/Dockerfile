@@ -2,6 +2,8 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+ENV PYTHONUNBUFFERED=1
+
 COPY requirements.txt .
 
 RUN pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu --timeout 300 \
